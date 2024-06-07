@@ -1,28 +1,26 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.IO;
 using System.Runtime.InteropServices;
+
 using DALSA.SaperaLT.SapClassBasic;
 using DALSA.SaperaLT.Examples.NET.Utils;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using System.Diagnostics;
 
-
-namespace SaperaImage2MatrixLabview
+namespace DALSA.SaperaLT.Examples.NET.CSharp.GrabConsole
 {
-    public class GrabConsole
-    {
-        static float lastFrameRate = 0.0f;
+    class GrabConsole
+   {
         static SapAcquisition Acq = null;
         static SapAcqDevice AcqDevice = null;
         static SapBuffer Buffers = null;
         static SapTransfer Xfer = null;
         static SapView View = null;
-        static int[,] matrix;
+        static int countFrame = 0;
+        static List<Int16[,]> frames = new List<Int16[,]>();
 
         [System.Runtime.InteropServices.DllImport("kernel32.dll")]
         private static extern bool AllocConsole();
@@ -33,51 +31,105 @@ namespace SaperaImage2MatrixLabview
             SapView View = args.Context as SapView;
             View.Show();
 
-            int buffWidth = Buffers.Width;
-            int buffHeight = Buffers.Height;
-
-            matrix = new int[buffWidth, buffHeight];
-            int buffSize = Buffers.BytesPerPixel * buffWidth * buffHeight;
-
-            IntPtr ptr2PixelValue = Marshal.AllocHGlobal(buffSize);
-
+            // save Buffer
+            Console.WriteLine("Buffers.Count: " + Buffers.Count.ToString() + " " +
+                              "Buffers.Index: " + Buffers.Index.ToString()); 
+            int width = Buffers.Width;
+            int height = Buffers.Height;
             Stopwatch stopwatch = new Stopwatch();
 
-           /**
-            * @TEST: REadElement one-by-one approach
-            */
             stopwatch.Start();
-
-            for (int i = 0; i < buffWidth; i++)
-            {
-                for (int j = 0; j < buffHeight; j++)
-                {
-                    // read the value of the pixel ixj inside of the matrix
-                    Buffers.ReadElement(i, j, ptr2PixelValue);
-                    int pixelValue = Marshal.ReadInt16(ptr2PixelValue);
-                    matrix[i, j] = pixelValue;
-                }
-            }
-
+            Buffers.GetAddress(out IntPtr buffAddress);
             stopwatch.Stop();
+            Console.WriteLine(stopwatch.Elapsed.TotalSeconds.ToString() + " s");
 
-            string filePath = @"C:\temp\matrix.txt";
+            //SaveImageData2File(width, height, buffAddress);
+            SaveFrames2LabView(width, height, buffAddress);
+
+            /**
+             * refresh frame rate
+             * 
+                SapTransfer transfer = sender as SapTransfer;
+                if (transfer.UpdateFrameRateStatistics())
+                {
+                SapXferFrameRateInfo stats = transfer.FrameRateStatistics;
+                float framerate = 0.0f;
+
+                if (stats.IsLiveFrameRateAvailable)
+                    framerate = stats.LiveFrameRate;
+
+                // check if frame rate is stalled
+                if (stats.IsLiveFrameRateStalled)
+                {
+                    Console.WriteLine("Live Frame rate is stalled.");
+                }
+
+                // update FPS only if the value changed by +/- 0.1
+                else if ((framerate > 0.0f) && (Math.Abs(lastFrameRate - framerate) > 0.1f))
+                {
+                    Console.WriteLine("Grabbing at {0} frames/sec", framerate);
+                    lastFrameRate = framerate;
+                }
+            }*/
+        }
+
+        private static void SaveImageData2File(int width, int height, IntPtr buffAddress)
+        {
+            Int16[] imageData = new Int16[width * height];
+            Marshal.Copy(buffAddress, imageData, 0, width * height);
+
+            string filePath = @"C:\temp\matrix" + countFrame + ".txt";
             using (StreamWriter writer = new StreamWriter(filePath))
             {
-                for (int i = 0; i < buffWidth; i++)
+                for (int i = 0; i < height; i++)
                 {
-                    for (int j = 0; j < buffHeight; j++)
+                    for (int j = 0; j < width; j++)
                     {
-                        writer.Write(matrix[i, j].ToString() + " ");
+                        writer.Write(imageData[i+j].ToString() + " ");
                     }
                     writer.WriteLine();
                 }
-                writer.Write(stopwatch.Elapsed.TotalSeconds.ToString() + " s");
+            }
+        }
+
+        private static void SaveFrames2LabView(int width, int height, IntPtr buffAddress)
+        {
+            Int16[] imageData = new Int16[width * height];
+            Int16[,] matrix = new Int16[width, height];
+            Marshal.Copy(buffAddress, imageData, 0, width * height);
+
+            for (int i = 0; i < height; i++)
+            {
+                for (int j = 0; j < width; j++)
+                {
+                    matrix[j, i] = imageData[i + j];
+                }
             }
 
-            Marshal.FreeHGlobal(ptr2PixelValue);
-
+            frames.Insert(countFrame, matrix);
+            countFrame++;
         }
+        
+        private static void Frame2File()
+        {
+            string filePath = @"C:\temp\frames.txt";
+            using (StreamWriter writer = new StreamWriter(filePath))
+            {
+                foreach(var mat in frames)
+                {
+                    writer.WriteLine("Matriz:");
+                    for (int i = 0; i < mat.GetLength(0); i++)
+                    {
+                        for ( int j = 0; j < mat.GetLength(1); j++)
+                        {
+                            writer.Write(mat[i, j].ToString() + " ");
+                        }
+                        writer.WriteLine();
+                    }
+                }
+            }
+        }
+
         static void Main(string[] args)
         {
             // This is only meaningful for .NET 5 and up in order to show the console, since the project
@@ -90,44 +142,47 @@ namespace SaperaImage2MatrixLabview
             // file (CCF) should be loaded to configure it.
             if (!GetOptions(args, acqParams))
             {
-                Console.WriteLine("\nPress any key to terminate\n");
-                Console.ReadKey(true);
-                return;
+               Console.WriteLine("\nPress any key to terminate\n");
+               Console.ReadKey(true);
+               return;
             }
 
             SapLocation loc = new SapLocation(acqParams.ServerName, acqParams.ResourceIndex);
 
             if (SapManager.GetResourceCount(acqParams.ServerName, SapManager.ResourceType.Acq) > 0)
             {
-                Acq = new SapAcquisition(loc, acqParams.ConfigFileName);
-                Buffers = new SapBufferWithTrash(2, Acq, SapBuffer.MemoryType.ScatterGather);
-                Xfer = new SapAcqToBuf(Acq, Buffers);
+               Acq = new SapAcquisition(loc, acqParams.ConfigFileName);
+               Buffers = new SapBufferWithTrash(2, Acq, SapBuffer.MemoryType.ScatterGather);
+               Xfer = new SapAcqToBuf(Acq, Buffers);
 
-                // Create acquisition object
-                if (!Acq.Create())
-                {
-                    Console.WriteLine("Error during SapAcquisition creation!\n");
-                    DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
-                    return;
-                }
-                Acq.EnableEvent(SapAcquisition.AcqEventType.StartOfFrame);
+               // Create acquisition object
+               if (!Acq.Create())
+               {
+                  Console.WriteLine("Error during SapAcquisition creation!\n");
+                  DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
+                  return;
+               }
+               Acq.EnableEvent(SapAcquisition.AcqEventType.StartOfFrame);
 
             }
 
             else if (SapManager.GetResourceCount(acqParams.ServerName, SapManager.ResourceType.AcqDevice) > 0)
             {
-                AcqDevice = new SapAcqDevice(loc, acqParams.ConfigFileName);
-                Buffers = new SapBufferWithTrash(2, AcqDevice, SapBuffer.MemoryType.ScatterGather);
-                Xfer = new SapAcqDeviceToBuf(AcqDevice, Buffers);
+               AcqDevice = new SapAcqDevice(loc, acqParams.ConfigFileName);
+               Buffers = new SapBufferWithTrash(2, AcqDevice, SapBuffer.MemoryType.ScatterGather);
+               Xfer = new SapAcqDeviceToBuf(AcqDevice, Buffers);
 
-                // Create acquisition object
-                if (!AcqDevice.Create())
-                {
-                    Console.WriteLine("Error during SapAcqDevice creation!\n");
-                    DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
-                    return;
-                }
+               // Create acquisition object
+               if (!AcqDevice.Create())
+               {
+                  Console.WriteLine("Error during SapAcqDevice creation!\n");
+                  DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
+                  return;
+               }
             }
+
+            Console.WriteLine("How many frames? ");
+            int userInput = int.Parse(Console.ReadLine());
 
             View = new SapView(Buffers);
             // End of frame event
@@ -141,7 +196,7 @@ namespace SaperaImage2MatrixLabview
                 Console.WriteLine("Error during SapBuffer creation!\n");
                 DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
                 return;
-            }
+            }    
 
             // Create buffer object
             if (!Xfer.Create())
@@ -160,7 +215,14 @@ namespace SaperaImage2MatrixLabview
             }
 
             //Xfer.Grab();
-            Xfer.Snap(1);
+            if (userInput > 0 && userInput < 100)
+            {
+                Xfer.Snap(userInput);
+            }
+            else
+            {
+                Xfer.Snap();
+            }
             Console.WriteLine("\n\nGrab started, press a key to freeze");
             //Console.ReadKey(true);
             Xfer.Wait(2000);
@@ -172,14 +234,11 @@ namespace SaperaImage2MatrixLabview
         {
             // Check if arguments were passed
             if (args.Length > 1)
-                return ExampleUtils.GetOptionsFromCommandLine(args, acqParams);
+            return ExampleUtils.GetOptionsFromCommandLine(args, acqParams);
             else
-                return ExampleUtils.GetOptionsFromQuestions(acqParams);
+            return ExampleUtils.GetOptionsFromQuestions(acqParams);
         }
-        public static int[,] GetMatrix()
-        {
-            return matrix;
-        }
+
         static void DestroysObjects(SapAcquisition acq, SapAcqDevice camera, SapBuffer buf, SapTransfer xfer, SapView view)
         {
             if (xfer != null)
@@ -194,26 +253,26 @@ namespace SaperaImage2MatrixLabview
                 camera.Dispose();
             }
 
-            if (acq != null)
-            {
+             if (acq != null)
+             {
                 acq.Destroy();
                 acq.Dispose();
-            }
+             }
 
-            if (buf != null)
-            {
+             if (buf != null)
+             {
                 buf.Destroy();
                 buf.Dispose();
-            }
+             }
 
-            if (view != null)
-            {
+             if (view != null)
+             {
                 view.Destroy();
                 view.Dispose();
-            }
-
-            Console.WriteLine("\nPress any key to terminate\n");
-            Console.ReadKey(true);
-        }
-    }
+             }
+             Frame2File();
+             Console.WriteLine("\nPress any key to terminate\n");
+             Console.ReadKey(true);
+        } 
+   }
 }
