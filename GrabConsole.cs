@@ -35,7 +35,7 @@ namespace DALSA.SaperaLT.Examples.NET.CSharp.GrabConsole
             Console.WriteLine("Buffers.Count: " + Buffers.Count.ToString() + " " +
                               "Buffers.Index: " + Buffers.Index.ToString()); 
             int width = Buffers.Width;
-            int height = Buffers.Height;
+            int height = 1;//Buffers.Height;
             Stopwatch stopwatch = new Stopwatch();
 
             stopwatch.Start();
@@ -46,31 +46,6 @@ namespace DALSA.SaperaLT.Examples.NET.CSharp.GrabConsole
             //SaveImageData2File(width, height, buffAddress);
             SaveFrames2LabView(width, height, buffAddress);
 
-            /**
-             * refresh frame rate
-             * 
-                SapTransfer transfer = sender as SapTransfer;
-                if (transfer.UpdateFrameRateStatistics())
-                {
-                SapXferFrameRateInfo stats = transfer.FrameRateStatistics;
-                float framerate = 0.0f;
-
-                if (stats.IsLiveFrameRateAvailable)
-                    framerate = stats.LiveFrameRate;
-
-                // check if frame rate is stalled
-                if (stats.IsLiveFrameRateStalled)
-                {
-                    Console.WriteLine("Live Frame rate is stalled.");
-                }
-
-                // update FPS only if the value changed by +/- 0.1
-                else if ((framerate > 0.0f) && (Math.Abs(lastFrameRate - framerate) > 0.1f))
-                {
-                    Console.WriteLine("Grabbing at {0} frames/sec", framerate);
-                    lastFrameRate = framerate;
-                }
-            }*/
         }
 
         private static void SaveImageData2File(int width, int height, IntPtr buffAddress)
@@ -94,15 +69,15 @@ namespace DALSA.SaperaLT.Examples.NET.CSharp.GrabConsole
 
         private static void SaveFrames2LabView(int width, int height, IntPtr buffAddress)
         {
-            Int16[] imageData = new Int16[width * height];
-            Int16[,] matrix = new Int16[width, height];
-            Marshal.Copy(buffAddress, imageData, 0, width * height);
+            Int16[] imageData = new Int16[height * width];
+            Int16[,] matrix = new Int16[height, width];
+            Marshal.Copy(buffAddress, imageData, 0, height * width);
 
             for (int i = 0; i < height; i++)
             {
                 for (int j = 0; j < width; j++)
                 {
-                    matrix[j, i] = imageData[i + j];
+                    matrix[i, j] = imageData[i + j];
                 }
             }
 
@@ -117,7 +92,7 @@ namespace DALSA.SaperaLT.Examples.NET.CSharp.GrabConsole
             {
                 foreach(var mat in frames)
                 {
-                    writer.WriteLine("Matriz:");
+                    writer.WriteLine("Init > ");
                     for (int i = 0; i < mat.GetLength(0); i++)
                     {
                         for ( int j = 0; j < mat.GetLength(1); j++)
@@ -180,8 +155,7 @@ namespace DALSA.SaperaLT.Examples.NET.CSharp.GrabConsole
                   return;
                }
             }
-
-            Console.WriteLine("How many frames? ");
+            Console.WriteLine("Select how many frames: ");
             int userInput = int.Parse(Console.ReadLine());
 
             View = new SapView(Buffers);
@@ -223,6 +197,7 @@ namespace DALSA.SaperaLT.Examples.NET.CSharp.GrabConsole
             {
                 Xfer.Snap();
             }
+
             Console.WriteLine("\n\nGrab started, press a key to freeze");
             //Console.ReadKey(true);
             Xfer.Wait(2000);
