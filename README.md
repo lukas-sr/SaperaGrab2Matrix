@@ -1,2 +1,2 @@
 # SaperaGrab2Matrix
-Extract a compreehensive Matrix from Sapera Frame Grabber Board using a industrial sensor
+Extract a compreehensive Matrix from an image aquired from Sapera Frame Grabber board with a industrial sensor plugged by CLHS
