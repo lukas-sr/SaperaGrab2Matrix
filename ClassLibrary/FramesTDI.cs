@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -16,11 +16,12 @@ public class FramesTDI
     public static SapBuffer Buffers = null;
     public static SapTransfer Xfer = null;
     public static SapView View = null;
+    public static SapLocation loc = null;
     public static int numFrames = 3;
     public static int sizeArr = 0;
     public static Int16[,] framesArr = null;
     public MyAcquisitionParams acqParams;
-    private static int countFrame = 0;
+    public static int countFrame = 0;
     public FramesTDI()
     {
         acqParams = new MyAcquisitionParams
@@ -40,9 +41,9 @@ public class FramesTDI
 
         return false;
     }
-    public void StartGrabFramesTDI(int numFrames)
+    public void StartGrabFramesTDI()
     {
-        SapLocation loc = new SapLocation(acqParams.ServerName, acqParams.ResourceIndex);
+        loc = new SapLocation(acqParams.ServerName, acqParams.ResourceIndex);
 
         if (SapManager.GetResourceCount(acqParams.ServerName, SapManager.ResourceType.Acq) > 0)
         {
@@ -78,14 +79,16 @@ public class FramesTDI
         Xfer.Pairs[0].EventType = SapXferPair.XferEventType.EndOfFrame;
         Xfer.XferNotify += new SapXferNotifyHandler(Xfer_XferNotify);
         Xfer.XferNotifyContext = View;
-
+    }
+    public void StartSnap()
+    {
         // Create buffer object
         if (!Buffers.Create())
         {
             DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
             return;
         }
-        
+
         // For TDI Case the heigth of the buffer must be equal 1
         sizeArr = Buffers.Width * 1;
         InitializeFrameArray(numFrames, sizeArr);
@@ -96,32 +99,48 @@ public class FramesTDI
             DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
             return;
         }
-        
+
         // Create buffer object
         if (!View.Create())
         {
             DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
             return;
         }
+        Xfer.Snap(numFrames);
 
-        //Xfer.Grab();
-        if (numFrames > 0 && numFrames < 100) { Xfer.Snap(numFrames); }
-        else { Xfer.Snap(); }
-
-        Xfer.Wait(30000);
-
+        Xfer.Wait(numFrames * 500);
         DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
         loc.Dispose();
     }
     public virtual void Xfer_XferNotify(object sender, SapXferNotifyEventArgs args)
     {
-        // save Buffer
-        Buffers.GetAddress(out IntPtr buffAddress);
-        SaveFrameArray(sizeArr, buffAddress);
-
         // refresh view
         SapView View = args.Context as SapView;
         View.Show();
+
+        // save Buffer
+        Buffers.GetAddress(out IntPtr buffAddress);
+        SaveFrameArray(sizeArr, buffAddress);
+    }
+    public void WaitForTransferCompletion(int numFrames)
+    {
+        var tcs = new TaskCompletionSource<bool>();
+
+        Xfer.XferNotify += (sender, args) =>
+        {
+            Buffers.GetAddress(out IntPtr buffAddress);
+            SaveFrameArray(sizeArr, buffAddress);
+
+            // Refresh view
+            SapView view = args.Context as SapView;
+            view.Show();
+
+            // If all frames have been transferred, complete the task
+            if (--numFrames == 0)
+                tcs.TrySetResult(true);
+        };
+
+        Task.WhenAny(tcs.Task, Task.Delay(numFrames * 500)).Wait();
     }
     public static void SaveFrameArray(int size, IntPtr buffAddress)
     {
@@ -138,7 +157,7 @@ public class FramesTDI
     {
         framesArr = (Int16[,])Array.CreateInstance(typeof(Int16), dim1, dim2);
     }
-    static void DestroysObjects(SapAcquisition acq, SapAcqDevice camera, SapBuffer buf, SapTransfer xfer, SapView view)
+    public static void DestroysObjects(SapAcquisition acq, SapAcqDevice camera, SapBuffer buf, SapTransfer xfer, SapView view)
     {
         if (xfer != null)
         {
