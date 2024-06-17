@@ -17,11 +17,11 @@ public class FramesTDI
     public static SapTransfer Xfer = null;
     public static SapView View = null;
     public static SapLocation loc = null;
-    public static int numFrames = 3;
+    public static int numFrames = 1;
     public static int sizeArr = 0;
     public static Int16[,] framesArr = null;
     public MyAcquisitionParams acqParams;
-    public static int countFrame = 0;
+    private static int countFrame = 0;
     public FramesTDI()
     {
         acqParams = new MyAcquisitionParams
@@ -41,7 +41,7 @@ public class FramesTDI
 
         return false;
     }
-    public void StartGrabFramesTDI()
+    public void ConfigureGrabTDI()
     {
         loc = new SapLocation(acqParams.ServerName, acqParams.ResourceIndex);
 
@@ -54,7 +54,7 @@ public class FramesTDI
             // Create acquisition object
             if (!Acq.Create())
             {
-                DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
+                DestroysObjects();
                 return;
             }
             Acq.EnableEvent(SapAcquisition.AcqEventType.StartOfFrame);
@@ -69,7 +69,7 @@ public class FramesTDI
             // Create acquisition object
             if (!AcqDevice.Create())
             {
-                DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
+                DestroysObjects();
                 return;
             }
         }
@@ -85,7 +85,7 @@ public class FramesTDI
         // Create buffer object
         if (!Buffers.Create())
         {
-            DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
+            DestroysObjects();
             return;
         }
 
@@ -96,20 +96,20 @@ public class FramesTDI
         // Create buffer object
         if (!Xfer.Create())
         {
-            DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
+            DestroysObjects();
             return;
         }
 
         // Create buffer object
         if (!View.Create())
         {
-            DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
+            DestroysObjects();
             return;
         }
         Xfer.Snap(numFrames);
 
         Xfer.Wait(numFrames * 500);
-        DestroysObjects(Acq, AcqDevice, Buffers, Xfer, View);
+        DestroysObjects();
         loc.Dispose();
     }
     public virtual void Xfer_XferNotify(object sender, SapXferNotifyEventArgs args)
@@ -121,26 +121,6 @@ public class FramesTDI
         // save Buffer
         Buffers.GetAddress(out IntPtr buffAddress);
         SaveFrameArray(sizeArr, buffAddress);
-    }
-    public void WaitForTransferCompletion(int numFrames)
-    {
-        var tcs = new TaskCompletionSource<bool>();
-
-        Xfer.XferNotify += (sender, args) =>
-        {
-            Buffers.GetAddress(out IntPtr buffAddress);
-            SaveFrameArray(sizeArr, buffAddress);
-
-            // Refresh view
-            SapView view = args.Context as SapView;
-            view.Show();
-
-            // If all frames have been transferred, complete the task
-            if (--numFrames == 0)
-                tcs.TrySetResult(true);
-        };
-
-        Task.WhenAny(tcs.Task, Task.Delay(numFrames * 500)).Wait();
     }
     public static void SaveFrameArray(int size, IntPtr buffAddress)
     {
@@ -157,36 +137,41 @@ public class FramesTDI
     {
         framesArr = (Int16[,])Array.CreateInstance(typeof(Int16), dim1, dim2);
     }
-    public static void DestroysObjects(SapAcquisition acq, SapAcqDevice camera, SapBuffer buf, SapTransfer xfer, SapView view)
+    public static void DestroysObjects()
     {
-        if (xfer != null)
+        if (Xfer != null)
         {
-            xfer.Destroy();
-            xfer.Dispose();
+            Xfer.Destroy();
+            Xfer.Dispose();
         }
 
-        if (camera != null)
+        if (AcqDevice != null)
         {
-            camera.Destroy();
-            camera.Dispose();
+            AcqDevice.Destroy();
+            AcqDevice.Dispose();
         }
 
-        if (acq != null)
+        if (Acq != null)
         {
-            acq.Destroy();
-            acq.Dispose();
+            Acq.Destroy();
+            Acq.Dispose();
         }
 
-        if (buf != null)
+        if (Buffers != null)
         {
-            buf.Destroy();
-            buf.Dispose();
+            Buffers.Destroy();
+            Buffers.Dispose();
         }
 
-        if (view != null)
+        if (View != null)
         {
-            view.Destroy();
-            view.Dispose();
+            View.Destroy();
+            View.Dispose();
+        }
+
+        if (countFrame >= numFrames)
+        {
+            countFrame = 0;
         }
     }
 }
