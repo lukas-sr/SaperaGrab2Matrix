@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,19 +12,40 @@ public class FramesArea : FramesTDI
         acqParams = new MyAcquisitionParams
         {
             ResourceIndex = 0,
-            ServerName = "Xtium - CLHS_PX8_1"
+            ServerName = "Xtium-CLHS_PX8_1"
         };
     }
-    public override void Xfer_XferNotify(object sender, SapXferNotifyEventArgs args)
+
+    public override void StartSnap()
     {
-        // save Buffer
+        // Create buffer object
+        if (!Buffers.Create())
+        {
+            DestroysObjects();
+            return;
+        }
 
-        Buffers.GetAddress(out IntPtr buffAddress);
-        
-        SaveFrameArray(sizeArr, buffAddress);
+        // For TDI Case the heigth of the buffer must be equal 1
+        sizeArr = Buffers.Width * Buffers.Height;
+        InitializeFrameArray(numFrames, sizeArr);
 
-        // refresh view
-        SapView View = args.Context as SapView;
-        View.Show();
+        // Create buffer object
+        if (!Xfer.Create())
+        {
+            DestroysObjects();
+            return;
+        }
+
+        // Create buffer object
+        if (!View.Create())
+        {
+            DestroysObjects();
+            return;
+        }
+        Xfer.Snap(numFrames);
+
+        Xfer.Wait(numFrames * 500);
+        DestroysObjects();
+        loc.Dispose();
     }
 }
