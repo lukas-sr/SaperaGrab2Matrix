@@ -22,6 +22,7 @@ public class FramesTDI
     public static Int16[,] framesArr = null;
     public MyAcquisitionParams acqParams;
     private static int countFrame = 0;
+    
     public FramesTDI()
     {
         acqParams = new MyAcquisitionParams
