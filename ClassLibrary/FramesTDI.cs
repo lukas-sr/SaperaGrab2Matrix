@@ -134,6 +134,9 @@ public class FramesTDI
         }
         countFrame++;
     }
+    public static void ReInitializeCountFrame(){
+        countFrame = 0;
+    }
     public static void InitializeFrameArray(int dim1, int dim2)
     {
         framesArr = (Int16[,])Array.CreateInstance(typeof(Int16), dim1, dim2);
